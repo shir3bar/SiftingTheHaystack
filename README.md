@@ -45,7 +45,7 @@ conda activate STG-NF
 We provide codes to save data into the format expected by STG-NF and divide it into the partitions used in our paper. 
 You'll need to download the data seperately from the corresponding paper's repositories.
 [FishLarvae1](), [PoseR](), [Meerkat]()
-Full details in the [data_prep] (data_prep/README.md) folder.
+Full details in the [data_prep](data_prep/README.md) folder.
 
 ### Generating the Synthetic Dataset
 Code coming soon.
