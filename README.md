@@ -4,7 +4,7 @@
 The official PyTorch implementation of the paper [**"Sifting through the haystack - efficiently finding rare animal behaviors in large-scale dataset"**]().
 
 
-
+Note this repo is an application and adaptation of the [original STG-NF repo](https://github.com/orhir/STG-NF) to cool animal behavior datasets.
 
 
 ## Getting Started
