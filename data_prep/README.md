@@ -3,8 +3,11 @@
 We provide code to prepare the 3 biological datasets used in the paper into the format expected by STG-NF. Train/test splits used for FishLarvae1 and Meerkat are provided in `./FishLarvae1/metadata_csvs/` and `./Meerkat/metadata_csvs/`. For PoseR we used the partitions specified in their data.
 
 You'll need to download the data yourself from their corresponding repos and adhere to any licensing restrictions specified by the dataset creators.
+
 [FishLarvae1](https://data.mendeley.com/datasets/8sb4ywbx7f/1) [Paper by Johnson et al. 2020](https://www.cell.com/current-biology/fulltext/S0960-9822(19)31465-4)
+
 [PoseR](https://doi.org/10.5281/zenodo.7807968), [Pre-print by Mullen et al. 2023](https://doi.org/10.1101/2023.04.07.535991)
+
 [Meerkat](https://doi.org/10.5061/dryad.7q294p8),[Paper by Chakaravaty et al. 2019](https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13172)
 
 ## Data prep for FishLarvae1
