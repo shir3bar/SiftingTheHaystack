@@ -16,7 +16,7 @@ This code was tested on `Ubuntu 20.04.4 LTS` and requires:
 
 ### Setup Conda Environment:
 ```
-git clone https://github.com/SiftingTheHaystack
+git clone https://github.com/shir3bar/SiftingTheHaystack
 cd SiftingTheHaystack
 
 # Conda environment setup
