@@ -44,9 +44,13 @@ conda activate STG-NF
 ### Data Prep
 We provide codes to save data into the format expected by STG-NF and divide it into the partitions used in our paper. 
 You'll need to download the data seperately from the corresponding paper's repositories.
-[FishLarvae1](https://data.mendeley.com/datasets/8sb4ywbx7f/1) [Paper by Johnson et al. 2020](https://www.cell.com/current-biology/fulltext/S0960-9822(19)31465-4)
-[PoseR](https://doi.org/10.5281/zenodo.7807968), [Pre-print by Mullen et al. 2023](https://doi.org/10.1101/2023.04.07.535991)
-[Meerkat](https://doi.org/10.5061/dryad.7q294p8),[Paper by Chakaravaty et al. 2019](https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13172)
+
+[FishLarvae1](https://data.mendeley.com/datasets/8sb4ywbx7f/1),   [Paper by Johnson et al. 2020](https://www.cell.com/current-biology/fulltext/S0960-9822(19)31465-4)
+
+[PoseR](https://doi.org/10.5281/zenodo.7807968),    [Pre-print by Mullen et al. 2023](https://doi.org/10.1101/2023.04.07.535991)
+
+[Meerkat](https://doi.org/10.5061/dryad.7q294p8),   [Paper by Chakaravaty et al. 2019](https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13172)
+
 Full details in the [data_prep](data_prep/) folder.
 
 ### Generating the Synthetic Dataset
