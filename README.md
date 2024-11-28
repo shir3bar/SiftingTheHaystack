@@ -86,11 +86,11 @@ python train_eval.py --dataset Meerkat2019  --model_layout meerkat_connected --s
 -->
 
 ## Rarity experiments
-To recreate all of the results of the rarity experiments conducted in the paper, use the bash script: `./paper_experiments/rarity_exps.sh`. Note it takes a very long time to run.
+To recreate all of the results of the rarity experiments conducted in the paper, use the bash script: `./paper_experiments/rarity_biodata.sh` for the biological datasets, make sure to change the path to the appropriate data path. Note it takes a very long time to run.
 Example call for a single experiment:
 
 ```
-python rarity_rarefaction_final_exp.py --dataset Larvae2019 --data_dir /path/to/data --model_layout larvaeposeeyes --epochs 6 --classifier 
+python rarity_exp.py --dataset Larvae2019 --data_dir /path/to/data --model_layout larvaeposeeyes --epochs 2 --classifier 
 ```
 
 ## Acknowledgments
