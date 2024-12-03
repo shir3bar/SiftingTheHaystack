@@ -99,6 +99,10 @@ Example call for a single experiment:
 python rarity_exp.py --dataset Larvae2019 --data_dir /path/to/data --model_layout larvaeposeeyes --epochs 2 --classifier 
 ```
 
+## Statistical analysis and visualizations
+Code for statistical analysis of the rarity experiments and ablation studies is available in the `./statistical_analysis/` folder. You'll need to download the data files containing the pipeline outputs seperately from the following data repository:
+[https://doi.org/10.5281/zenodo.14253658](https://doi.org/10.5281/zenodo.14253658)
+
 ## Acknowledgments
 Our code is an adaptation of the original STG-NF repository:
 - [Normalizing Flows for Human Pose Anomaly Detection](https://github.com/orhir/STG-NF)
