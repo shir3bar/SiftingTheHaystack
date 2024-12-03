@@ -1,0 +1,513 @@
+---
+title: "Sifting through the haystack - efficiently finding rare animal behaviors in large-scale datasets"
+output: html_notebook
+---
+
+This is an R Markdown Notebook which provides the statistical analysis for:
+
+`Bar, S., Hirschorn, O., Holzman R., and Avidan, S., 2025. Sifting through the haystack - efficiently finding rare animal behaviors in large-scale datasets.In Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision.`
+
+If you're interested in training Deep Learning models, head over to our [Github repository](https://github.com/shir3bar/SiftingTheHaystack) and checkout the Python code. 
+
+Here we poke around with the results from our models to:
+
+**1. Statistically analyze the performance of our pipeline during rarity experiments by: **
+
+    a. Comparing our method of finding rare behaviors to a random sampling baseline.
+    b. Testing how factors (labeling effort, rarity level) effect performance of the pipeline.
+    
+   </br>
+  
+**2. Compare between the performance of fully supervised classifiers (ST-GCN) to that of an unsupervised anomaly detector (STG-NF) on:**
+
+    a. A synthetic (i.e., simulated) dataset that is loosely inspired by fish swimming. We test the effect of different levels of behavior similarity as well as different levels of baseline rarity on the performance of the models.
+    b. Three published experimental datasets of animal behavior. Two featuring pose-estimated data of larval zebrafish behavior and one featuring accelerometry data from wild meerkat.
+  
+
+Before we get started, you'll need to download the (rather large) raw data files from the following data repository:
+
+Our code allows the user to recreate all statistical analyses in our manuscript, with their associated plots and tables. We hope this will be useful to fellow researchers striving to make sense of deep learning-based classifiers in the biological domain. 
+We urge you to do the same on your next manuscript.
+
+If you find this code useful please cite the paper above and the appropriate statistical packages.
+
+## Load libraries and functions:
+```{r load_libraries}
+library(precrec)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(patchwork)
+library(emmeans)
+library(reshape2)
+library(visreg)
+```
+
+Load some (many) helper functions:
+```{r load_helper_functions}
+source('SiftingHelper.R')
+```
+
+## Pipeline performance under different behavior rarities:
+
+Our pipeline claims to efficiently find rare behaviors in large unlabeled datasets of animal behavior. 
+To test this assertion we ran rarity experiments where we rarified the behavior of interest to simulate situations where it is extremely rare (see paper for details). 
+Once rarified, we then apply two sampling+annotation pipelines to build a training dataset for a rare behavior classifier.
+We compare our proposed sampling pipeline and a traditional random sampling pipeline.
+To compare their performance, we train a classifier on the resulting dataset and use the classifier's Area under the Precision Recall Curve (AuPRC) as the performance metric for the entire pipeline.
+In each rarity level we repeat this experiment using 6 different labeling efforts (a.k.a the amount of data being reviewed and then used for classifier training).
+We did this separately for each of the datasets. Since the process is highly stochastic we repeated the experiments with 9 different random seeds for the synthetic data and 3 different random seeds for the biological datasets (out of considerations of computational resources).
+
+
+We now ask ourselves, for each dataset seperately, how does the performance change as a function of rarity, sampling method (pipeline) and labeling effort (we call this `subsample_size` in our code) 
+We then visualize the partial residual plot via visreg to understand the effect of rarity on the performance of each of the methods for a labeling effort of 200 samples.
+
+### Synthetic datasets evaluations
+This code chunk will take a while to run as the files are quite large, if you'd just like to get the jist of things, you can load just the first file.
+```{r load_synthetic_results}
+
+simulated_wave = read.csv('./SimulatedWave_rarity_results_agg.csv')# 3 different random seeds
+simulated_wave_extra = read.csv('./SimulatedWave_rarity_extra_results_agg.csv')# another 6 different random seeds
+
+# Tech note: you might need to configure the memory limitation in RStudio's Global Settings in order to load the second file
+```
+
+The synthetic datasets have 4 levels of behavior similarity, which we call behavior_sd, the larger the SD the more similar the common and rare behaviors (more on this in the paper, and in the data generation Python code).
+Each behavior SD is a different dataset, so we'll create a different linear model for each of these.
+
+```{r calculate_performance_synthetic, message=FALSE, warning=FALSE}
+
+data_stds = sort(unique(simulated_wave$data_std)) # get the behavior_sd
+graphs_synthetic = list()
+all_mean_aucs_synthetic = list()
+models_synthetic = list()
+all_raw_aucs_synthetic = list()
+for (std_ind in 1:length(data_stds)){
+  data_std = data_stds[std_ind]
+  sub1 = simulated_wave[simulated_wave$data_std==data_std,]
+  # if you're using just the first file comment the next two lines out:
+  sub2 = simulated_wave_extra[simulated_wave_extra$data_std==data_std,] 
+  sub = rbind(sub1, sub2)
+  sub_aucs = get_all_auc_data(sub) # send sub1 if using just one file
+  
+  # sub_aucs is a list with 4 different dataframes all containing variations on     the performance metrics. We'll use the first dataframe which calculates the     mean AuPRC across the different random seeds for each method at each rarity     and each labeling effort. Check out the get_all_auc_data function for more      details.
+  all_mean_aucs_synthetic[[std_ind]] = sub_aucs[[1]]
+  all_raw_aucs_synthetic[[std_ind]] = sub_aucs[[4]] # this will be used for looking at the effect of labeling effort (a few sections below)
+  # we save a visreg graph for each dataset:
+  graphs_synthetic[[std_ind]] = get_visreg(all_mean_aucs_synthetic[[std_ind]])+   labs(title=paste('behavior SD',data_stds[std_ind]))
+  # and we'll save the model the model that generated this graph so you could poke around if you want:
+  models_synthetic[[std_ind]] = lm(auc~method*log_rarity*subsample_size,data=prep_data(all_mean_aucs_synthetic[[std_ind]]))
+}
+```
+
+Let's plot the `visreg` for all 4 behavior SDs:
+```{r visualize_visreg_synthetic_Fig4}
+# We're using the patchwork package to layout the graphs:
+g_all_synthetic = (graphs_synthetic[[1]]+graphs_synthetic[[2]]+
+           graphs_synthetic[[3]]+graphs_synthetic[[4]])+
+  plot_annotation(tag_levels = 'a')+
+  plot_layout(axis_titles='collect', guides='collect', axes='collect', nrow=1,
+              )&ylim(0,1.02)&theme(legend.position='bottom',
+            axis.text.x=element_text(size=18, angle=45, vjust=1, hjust=1), axis.title.y=element_text(hjust=0.65))
+g_all_synthetic # note that parameters of theme are optimized for the saved version of this graph, feel free to play around with these (or just open the pdf file)
+ggsave('./Figure4.pdf',g_all_synthetic, height=6,width=21)
+```
+
+### Biological datasets evaluations
+
+This code chunk will also take a while to run:
+
+```{r load_biological_results}
+poser = read.csv('./PoseR_rarity_results_agg.csv', 
+                      stringsAsFactors = T)
+meerkat = read.csv('./Meerkat2019_rarity_results_agg.csv', stringsAsFactors = T)
+fishlarvae1 = read.csv('./Larvae2019_rarity_results_agg.csv', stringsAsFactors = T)
+
+```
+
+Calculate performance metrics:
+
+```{r calculate_performance_biological}
+graphs_bio = list()
+models_bio = list()
+
+poser_aucs = get_all_auc_data(poser)
+meerkat_aucs = get_all_auc_data(meerkat)
+fishlarvae1_aucs = get_all_auc_data(fishlarvae1)
+
+
+graphs_bio[[1]] = get_visreg(fishlarvae1_aucs[[1]])+labs(title='FishLarvae1')
+graphs_bio[[2]] = get_visreg(poser_aucs[[1]])+labs(title='PoseR')
+graphs_bio[[3]] = get_visreg(meerkat_aucs[[1]])+labs(title='Meerkat')
+
+models_bio[[1]] = lm(auc~method*log_rarity*subsample_size,
+                       data=prep_data(fishlarvae1_aucs[[1]]))
+models_bio[[2]] =lm(auc~method*log_rarity*subsample_size,
+                       data=prep_data(poser_aucs[[1]]))
+models_bio[[3]] =lm(auc~method*log_rarity*subsample_size,
+                       data=prep_data(meerkat_aucs[[1]]))
+
+```
+
+
+```{r visualize_visreg_biological_Fig5}
+g_all_bio = (graphs_bio[[1]]+graphs_bio[[2]]+graphs_bio[[3]])+
+  plot_annotation(tag_levels = 'a')+
+  plot_layout(axis_titles='collect',guides='collect',
+              nrow=1,
+              )&ylim(0,1.02)&theme(legend.position='bottom',
+                                   axis.text.x=element_text(size=18,angle = 45, vjust = 1, hjust=1))
+g_all_bio
+ggsave('./Figure5.pdf',g_all_bio, height=6,width=16)
+```
+
+
+## Estimate mean performance of each method across all rarity levels
+We'll use the [emmeans package](https://rvlenth.github.io/emmeans/articles/basics.html) to estimate the marginal mean performance for each method across all rarity levels and for a labeling effort of 200 samples.
+As before, we do this separately for each dataset, in both the synthetic and biological datasets. Note you'll need to run the
+chunks above as we need the `models_synthetic` and `models_bio` lists.
+
+```{r calculate_method_marginal_means}
+# set the labeling effort and (log) rarities we'll be estimating performance at:
+samp_size = 200
+rarities = c(-3.931119,-3.6300887,-3.2041200,-2.6020600,-2.0000000,-1.3979400,-0.9208188) # logs of the rarities we investigated in the paper
+method_emmeans_synthetic = data.frame()
+# get marginal mean performance estimate for each of the behavior similarities:
+for (data_ind in seq(1,4)){
+  em_synth = emmeans(models_synthetic[[data_ind]], 
+                     ~method*log_rarity*subsample_size, 
+                     at=list(log_rarity=rarities,subsample_size=samp_size))
+  df=as.data.frame(em_synth)
+  df$rarity = signif(10^(df$log_rarity),2)*100
+  df$behavior_sd =data_stds[[data_ind]]
+  method_emmeans_synthetic = rbind(method_emmeans_synthetic,df)
+}
+# get marginal mean performance estimate for each of the biological datasets:
+ds_names = list('FishLarvae1','PoseR','Meerkat')
+method_emmeans_bio = data.frame()
+for (i in seq(1,3)){
+  df=as.data.frame(emmeans(models_bio[[i]], 
+                        ~method*log_rarity*subsample_size,
+                        at=list(log_rarity=rarities,subsample_size=samp_size)))
+  df$rarity = signif(10^(df$log_rarity),2)*100
+  df$dataset = ds_names[[i]]
+  method_emmeans_bio = rbind(method_emmeans_bio,df)
+}
+```
+
+Let's create a nice table summarising the results. We'll need the gt package for this:
+```{r marginal_means_summary_Tbl2}
+library(gt)
+# note you'll also need tidyr here for the pivot_wider function. We're not loading the entire package so as not to induce conflicts with dplyr, but rather we use tidyr::pivot_wider
+
+# We'll take the mean and standard deviation of the estimated AuPRC across all rarities and create a nice text string of mean ± SD for each dataset:
+synth_df = method_emmeans_synthetic%>%
+  group_by(behavior_sd,method)%>% # group by similarity and sampling method (ours/random)
+  summarise(mean_auc = mean(emmean), sd_auc= sd(emmean))%>% #calc mean and SD
+  mutate(text = paste(signif(mean_auc,2),signif(sd_auc,2),sep='±'))%>% #make pretty text
+  tidyr::pivot_wider(id_cols='behavior_sd',names_from = 'method',values_from='text')%>% # make pretty table
+  mutate(data_type='synthetic') # add informative column
+
+# make table even more pretty:
+synth_df2 = synth_df%>%
+  mutate(dataset = paste0('behaviorSD = ',as.character(behavior_sd)))%>%
+  ungroup()%>%
+  mutate(behavior_sd=NULL)
+
+# Now do the same for the biological data:
+bio_df =method_emmeans_bio%>%
+  group_by(dataset,method)%>%
+  summarise(mean_auc = mean(emmean), sd_auc= sd(emmean))%>%
+  mutate(text = paste(signif(mean_auc,2),signif(sd_auc,2),sep='±'))%>%
+  tidyr::pivot_wider(id_cols='dataset',names_from = 'method',values_from='text')%>%
+   mutate(data_type='biological')
+ 
+united_aucs = rbind(synth_df2,bio_df)%>%
+  select(data_type,dataset, proposed, random)
+
+gt_aucs = gt(united_aucs)%>%
+   tab_stubhead(label = "data_type")|>
+  tab_spanner(label='labeling method (mean AuPRC ± sd)', columns = c('proposed', 'random'))
+
+gt_aucs
+
+```
+
+If you want the LaTex code to generate this:
+```{r latex_table}
+gt_aucs%>%as_latex()%>%
+  as.character() %>%
+  cat()
+
+```
+### Effect of labeling effort on performance
+
+For this we'll use the raw AuPRCs within each experimental replicate (or random_seed). We do this because we want to look at the progression through training during a single experiment, when we increase the labeling effort sequentially. This because some samples maybe more informative than others and we don't want this to be an issue.
+
+```{r labeling_effort_synth_FigS1}
+# luckily, the dsname_aucs list has the raw aucs for each experiment stored in a dataframe aggregating these as the 4th item (seef SiftingHelper.R for details) 
+raw_aucs_synthetic = data.frame()
+for (i in seq(1,4)){
+  df = prep_data(all_raw_aucs_synthetic[[i]])
+  df$behavior_sd = data_stds[[i]]
+  raw_aucs_synthetic = rbind(raw_aucs_synthetic,df)
+}
+
+for_vis_synth = raw_aucs_synthetic%>%
+  filter(rarity>=0.000625&rarity<=0.12)%>%# these are the rarities we considered for the paper
+  mutate(subsample_size=as.numeric(subsample_size))%>%
+  #filter(subsample_size %in% c(30,400,600,1000))%>% # we found a weird dip in performance for the 60 and 100 labeling efforts so we removed them for this figure
+   group_by(behavior_sd,method,subsample_size)%>%
+   summarise(mean_auc = mean(aucs), sd_auc = sd(aucs), se_auc=sd_auc/sqrt(n()),n=n()) # get means and SEs
+
+g=ggplot(data=for_vis_synth,aes(x=subsample_size, y=mean_auc,color=method,fill=method))+
+  geom_ribbon(aes(ymax=mean_auc+(se_auc*1.96), ymin=mean_auc-(se_auc*1.96)),alpha=0.25)+
+  geom_point(size=3)+geom_line(linewidth=1)+
+  ylim(0,1)+
+  xlim(0,1000)+
+  labs(x='labeling effort',y='mean AuPRC')+
+  facet_wrap(~behavior_sd,nrow = 1,labeller =as_labeller(
+    c("0.5" = "behavior SD = 0.5",
+      "1.5" = "behavior SD = 1.5",
+      "2.5" = "behavior SD = 2.5",
+      "5" = "behavior SD = 5")))+theme_classic()+
+  theme( strip.background=element_blank(),legend.position = 'bottom',axis.text =element_text(size=22),
+         axis.title =element_text(size=24),
+         strip.text = element_text(size=32),legend.title = element_text(size=20),legend.text = element_text(size=18))
+g
+ggsave('./FigureS1.pdf',g,height=6,width=22)
+
+```
+
+We'll do the same thing for the biological datasets:
+```{r labeling_effort_bip_FigS2}
+# biological datasets:
+raw_aucs_bio = data.frame()
+all_ds_aucs_bio = list(fishlarvae1_aucs[[4]],poser_aucs[[4]],meerkat_aucs[[4]])
+for (i in seq(1,3)){
+  df = prep_data(all_ds_aucs_bio[[i]])
+  df$dataset = ds_names[[i]]
+  raw_aucs_bio = rbind(raw_aucs_bio,df)
+}
+
+for_vis_bio =
+ raw_aucs_bio%>%
+  filter(rarity>=0.000625&rarity<=0.12)%>% # these are the rarities we considered for the paper
+  mutate(subsample_size=as.numeric(subsample_size))%>%
+   group_by(dataset,method,subsample_size)%>%
+   summarise(mean_auc = mean(aucs), sd_auc = sd(aucs), se_auc=sd_auc/sqrt(n()),n=n())
+
+for_vis_bio$dataset =factor(for_vis_bio$dataset,levels=c('FishLarvae1','PoseR','Meerkat'))
+
+g = ggplot(data=for_vis_bio,aes(x=subsample_size, y=mean_auc,color=method,fill=method))+
+  geom_ribbon(aes(ymax=mean_auc+(se_auc*1.96), ymin=mean_auc-(se_auc*1.96)),alpha=0.25)+
+  geom_point(size=3)+geom_line(linewidth=1)+
+  ylim(0,1)+
+  xlim(0,1000)+
+  labs(x='labeling effort',y='mean AuPRC')+
+  facet_wrap(~dataset,nrow = 1)+theme_classic()+
+  theme(strip.background=element_blank(),legend.position = 'bottom',,axis.text =element_text(size=22),
+         axis.title =element_text(size=24),
+         strip.text = element_text(size=32),legend.title = element_text(size=20),legend.text = element_text(size=18))
+g
+ggsave('./FigureS2.pdf',g,height=6,width=17 )
+```
+
+
+## Comparing performance of different architectures  on the full datasets
+In these experiments, what we're essentially asking is "If we trained on the entire (original) datasets, what would we get?"
+This question is mostly pertinent in the context of the supervised classifier - as we need to put in the work to label data for training. The unsupervised anomaly detector trains on the entire dataset without labels anyways.
+The results here serve to put things in context of how good of a performance could we get on these datasets using their observed rarities.
+The data tables below contain results from the evaluation of models on the test set, it's an aggregate of 3 different replicates (using three different random seeds).
+Each line correspond to a single sample in the test set and the score it recieved from the classifier/anomaly detector as well as metadata related to the experiment.
+
+```{r load_synthetic_full_eval}
+synthetic_unsupervised = read.csv('./simulatedWave_unsupervised_results_agg.csv', stringsAsFactors = T)
+synthetic_classifier = read.csv('./simulatedWave_classifier_results_agg.csv', stringsAsFactors = T)
+```
+
+### Precision Recall Curves for the synthetic datasets:
+This is a replacement for the more familiar Receiver Operator Curves that is more informative for cases of severe data imbalance (see Saito and Rehnsmeier's [excellent  website](https://classeval.wordpress.com/)).
+
+```{r full_arch_comparison_synth_FigS3, message=FALSE,warning=FALSE}
+# we'll do all SDs and a baseline rarity of 5% for this analysis (as in above analyses)
+# in the next chunk we test the effect of different baseline rarities on pipeline performance
+rarity = 0.05
+graphs = list()
+for (std_ind in 1:4){
+  std = data_stds[std_ind]
+  print(std)
+  sub.un = subset(synthetic_unsupervised,((synthetic_unsupervised$data_std==std) &(synthetic_unsupervised$data_rarity==rarity)))
+  sub.class = subset(synthetic_classifier,synthetic_classifier$data_std==std & synthetic_classifier$data_rarity==rarity)
+  
+  scores = list()
+  labels = list()
+  seeds = c(16,42,82000)
+  dfs = list(sub.class, sub.un)
+  collls = c('mean_score1','mean_scores')
+  for (i in seq(1,2)){
+    d = dfs[[i]]
+    scores[[i]] = list()
+    labels[[i]] = list()
+    col.name = collls[i]
+    for (j in seq(1,3)){
+      seed = seeds[j]
+      s = d[(d$seed==seed),]
+      if (i==1){
+        scores[[i]][[j]] = s[,col.name]
+      }else{
+        scores[[i]][[j]] = -s[,col.name]
+      }
+      labels[[i]][[j]] = s$label=='abnormal'
+    }
+  }
+  dat = mmdata(scores,labels,
+               modname=c(rep('classifier',3),rep('unsupervised',3)),
+                         dsids=rep(c(1,2),3))
+  curves = evalmod(dat)
+  auc(curves)
+  #autoplot(curves)
+  graphs[[std_ind]] = get_plot(curves, 'PRC')+labs(title=paste('behavior SD =',std))
+}
+graphs_noaxis = graphs
+for (i in 2:4){
+  graphs_noaxis[[i]] = graphs_noaxis[[i]] +theme(axis.title.x = element_blank(),
+                                  axis.title.y = element_blank(),
+                                   axis.text.y = element_blank(),
+                                   axis.line.y = element_blank(),
+                                   axis.ticks.y = element_blank())
+}
+
+
+graphs_noaxis[[1]] = graphs_noaxis[[1]]+theme(axis.title.x = element_blank())
+
+
+g_all = (graphs_noaxis[[1]]+graphs_noaxis[[2]]+graphs_noaxis[[3]]+graphs_noaxis[[4]])+
+  plot_annotation(tag_levels = 'a')+
+  plot_layout(axis_titles='collect',guides='collect',
+              nrow=1)&ylim(0,1.09)&labs(color='architecture')&theme(plot.title = element_text(size=24),text=element_text(size=24),legend.title = element_text(size=20),legend.position = 'bottom')
+g_all
+ggsave('./FigureS3.pdf', g_all, height=6,width=18)
+```
+
+### Effect of the baseline behavioral rarity and behavior SD on architecture performance
+
+Here we create a (fancy) table presenting the average performance, when training on the entire dataset, at each baseline rarity (rows) and each behavior similarity (columns).
+We do this for both architectures. 
+
+**Evaluation note:** each combination of rarity and behavior similarity is actually a different simulated dataset. Since AuPRC, our choice of evaluation metric, is sensitive to the percent of the positive (a.k.a rare class of interest) in the data (see ) we chose to normalize the AuPRC so that we can compare between the different datasets. See our supplementary section 2.2.1 for details.
+
+####Classifier performance
+```{r rarity_vs_similarity_classifier_TableS2_1}
+#Synthetic classifier performance:
+auprcs.cls = synthetic_classifier %>%
+  group_by(data_rarity, data_std, seed) %>%
+  summarise(auprc = get_sim_aucprc(mean_score1,label=='abnormal',cls=T),.groups='drop')
+# The AuPRC expected at random is equal to the frequency of the positive (rare) class. To get rid of this data frequency dependant effect, I would like to look at performance as difference from baseline. Since AuPRC is just an integral of the area under Precision Recall curve, I want to do this by subtracting the random baseline area from the rest of the integral. 
+# I approximate the random  baseline area as a rectangle with width of 1 (all the x-axis) and a length of data_rarity (the y-axis from zero till the point the baseline intercepts it) so the diff from baseline is the auprc-data_rarity*1 (the area of the rectangle). 
+auprcs.cls$diff_from_baseline = auprcs.cls$auprc-auprcs.cls$data_rarity 
+# I further want to normalize this, because performance is capped at 1 we are automatically penalizing the frequent rare behaviors more, because their baseline forms a larger rectangle. So to normalize this we need to look at the area above the baseline (i.e., diff from baseline) divided by the maximum possible difference from baseline (i.e., maximum performance possible in the context of difference from baseline), the maximum difference from baseline is given when the auprc=1 so this will be 1-area under baseline or 1 - data_rarity
+auprcs.cls$norm_diff_from_baseline = auprcs.cls$diff_from_baseline/(1-auprcs.cls$data_rarity)
+mean_auprcs_cls = auprcs.cls %>%
+  group_by(data_rarity, data_std) %>%
+  summarise(mean_auprc = mean(auprc), std_auprc = sd(auprc), 
+            mean_diff = mean(norm_diff_from_baseline),
+            std_diff = sd(norm_diff_from_baseline), .groups = 'drop')%>%
+  mutate(text = paste(signif(mean_auprc,2),signif(std_auprc,2),sep='±'),
+         text_diff = paste(signif(mean_diff,2),signif(std_diff,2),sep='±'))%>%
+  ungroup()
+
+mean_auprcs_cls$text = as.factor(mean_auprcs_cls$text)
+mean_auprcs_cls$text_diff = as.factor(mean_auprcs_cls$text_diff)
+
+gt_prcs_cls = get_color_table(mean_auprcs_cls)
+gt_prcs_cls
+# Uncomment the following to save and/or present LaTex code for the table
+#gtsave(./TableS2_1.png')
+#gt_prcs_cls %>%
+#  as_latex()%>%
+#  as.character() %>%
+#  cat()
+```
+
+####Anomaly detector performance
+Do the same for the unsupervised anomaly detector
+```{r rarity_vs_similarity_anomaly_TableS2_2}
+auprcs_un = synthetic_unsupervised %>%
+  group_by(data_rarity, data_std, seed) %>%
+  summarise(auprc = get_sim_aucprc(mean_scores,label=='abnormal'),.groups='drop')
+# Normalize AuPRC:
+auprcs_un$diff_from_baseline = auprcs_un$auprc-auprcs_un$data_rarity 
+auprcs_un$norm_diff_from_baseline = auprcs_un$diff_from_baseline/(1-auprcs_un$data_rarity)
+# calc mean:
+mean_auprcs_un = auprcs_un %>%
+  group_by(data_rarity, data_std) %>%
+  summarise(mean_auprc = mean(auprc), std_auprc = sd(auprc), 
+            mean_diff = mean(norm_diff_from_baseline),
+            std_diff = sd(norm_diff_from_baseline), .groups = 'drop')%>%
+  mutate(text = paste(signif(mean_auprc,2),signif(std_auprc,2),sep='±'),
+         text_diff = paste(signif(mean_diff,2),signif(std_diff,2),sep='±'))
+# Make nice text:
+mean_auprcs_un$text = as.factor(mean_auprcs_un$text)
+mean_auprcs_un$text_diff = as.factor(mean_auprcs_un$text_diff)
+# Get nice table
+gt_prcs_un = get_color_table(mean_auprcs_un)
+gt_prcs_un
+# Uncomment the following to save and/or present LaTex code for the table
+#gtsave(./TableS2_1.png')
+#gt_prcs_un %>%
+#  as_latex()%>%
+#  as.character() %>%
+#  cat()
+```
+
+###  Precision Recall Curves for the biological datasets:
+Load data from experiments:
+
+```{r load_biological_full_eval}
+fishlarvae1_architecture = read.csv('./Larvae2019_architecture_results_agg.csv')#, stringsAsFactors = T)
+poser_architecture = read.csv('./PoseR_architecture_results_agg.csv')#, stringsAsFactors = T)
+meerkat_architecture = read.csv('./Meerkat2019_architecture_results_agg.csv')#, stringsAsFactors = T)
+data_frames = list(fishlarvae1_architecture,poser_architecture,meerkat_architecture)
+
+```
+
+The data is the raw evaluation outputs of each trained model from each experiment. Such that each line corresponds to the a single data sample from the test set and the score the classifier/anomaly detector gave it during inference.
+The table has a lot of metadata but what's important to know is that the architecture column tells us whether it's the unsupervised anomaly detector or a classifer and the exp_name colomn is a unique identifier for each experiment.
+For each architecture we trained 3 replicates using 3 different random seed to account for stochasticity in the training process.
+
+```{r full_arch_comparison_biological_FigS4}
+# The following code this gets us the precision recall curves for the architectures while taking into account the different reps and generates CIs
+# The result is a list with the three PR curves
+prc_graphs = list()
+for (i in seq(1,length(data_frames))){
+  arch_df = data_frames[[i]]
+  curvedata= get_all_data(arch_df,strategy='mixed') 
+  curves = evalmod(curvedata)
+  prc_graphs[[i]] = get_plot(curves, 'PRC')
+}
+
+
+fishlarvae1_noaxis = prc_graphs[[1]]+labs(title='FishLarvae1')+theme(axis.title.x = element_blank())
+
+poser_noaxis = prc_graphs[[2]]+labs(title='PoseR')+theme(axis.title.y = element_blank(),
+                                   axis.text.y = element_blank(),
+                                   axis.line.y = element_blank(),
+                                   axis.ticks.y = element_blank())
+meerkat_noaxis = prc_graphs[[3]]+labs(title='Meerkat')+theme(axis.title.x = element_blank(),
+                                  axis.title.y = element_blank(),
+                                   axis.text.y = element_blank(),
+                                   axis.line.y = element_blank(),
+                                   axis.ticks.y = element_blank())
+
+
+g = fishlarvae1_noaxis+poser_noaxis+meerkat_noaxis+plot_annotation(tag_levels = 'a')+
+  plot_layout(axis_titles='collect',guides='collect',
+              nrow=1)&labs(color='architecture')&theme(text=element_text(size=28),legend.title = element_text(size=20),legend.position = 'bottom')
+g
+ggsave('./FigS4.pdf', g, height=6,width=16)
+```
+## Acknowlegements and further info
+This code relies on the awesome [precrec](https://github.com/evalclass/precrec) package by Saito and Rehmsmeier, and also the great [emmeans](https://github.com/rvlenth/emmeans).
+
+If you have any further questions that weren't addressed here, or in our paper, or our [Github repo](https://github.com/shir3bar/SiftingTheHaystack) please don't hesitate to reach out to the corresponding author via email, or open an issue in our Github repository.
