@@ -10,7 +10,10 @@ You'll need to download the data yourself from their corresponding repos and adh
 
 [Meerkat data](https://doi.org/10.5061/dryad.7q294p8),       [Paper by Chakaravaty et al. 2019](https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13172)
 
-## Example of Dataset Directory Structure
+## Synthetic dataset 
+Our synthetic dataset is a nice little sandbox where you can test how your method reacts to different levels of behavior similarity and behavior rarity.
+You can get it at: [10.5281/zenodo.14266407](https://doi.org/10.5281/zenodo.14266407)
+## Example of dataset directory structure
 Our code creates for a given dataset the following data structure:
 
 ```
