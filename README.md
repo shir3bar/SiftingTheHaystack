@@ -1,7 +1,7 @@
 # Sifting through the haystack - efficiently finding rare animal behaviors in large-scale dataset [WACV 2025]
 
 
-The official PyTorch implementation of the paper [**"Sifting through the haystack - efficiently finding rare animal behaviors in large-scale dataset"**]().
+The official PyTorch implementation of the paper [**"Sifting through the haystack - efficiently finding rare animal behaviors in large-scale dataset"**](https://doi.org/10.48550/arXiv.2412.03452).
 
 
 Note this repo is an application and adaptation of the [original STG-NF repo](https://github.com/orhir/STG-NF) to cool animal behavior datasets.
